@@ -1,5 +1,6 @@
 import csv
 import os
+import tempfile
 import time
 from dataclasses import dataclass
 
@@ -28,7 +29,7 @@ OBJECT_BODY_KEYWORDS = ("object", "drawer", "button", "handle")
 @dataclass
 class InteractionMetrics:
     task_name: str
-    output_dir: str = "metrics"
+    output_dir: str | None = None
     log_every_steps: int = 20
 
 
@@ -52,10 +53,11 @@ class InteractionMetricLogger:
         self.hand_geom_ids = self._collect_hand_geom_ids()
         self.object_geom_ids = self._collect_object_geom_ids()
 
-        os.makedirs(cfg.output_dir, exist_ok=True)
+        output_dir = cfg.output_dir or os.path.join(tempfile.gettempdir(), "dreamcontrol_metrics")
+        os.makedirs(output_dir, exist_ok=True)
         stamp = time.strftime("%Y%m%d_%H%M%S")
         safe_task = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in cfg.task_name)
-        self.csv_path = os.path.join(cfg.output_dir, f"{safe_task}_{stamp}.csv")
+        self.csv_path = os.path.join(output_dir, f"{safe_task}_{stamp}.csv")
         self.csv_file = open(self.csv_path, "w", newline="", encoding="utf-8")
         self.writer = csv.DictWriter(
             self.csv_file,

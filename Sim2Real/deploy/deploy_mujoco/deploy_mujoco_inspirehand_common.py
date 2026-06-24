@@ -30,6 +30,8 @@ class InspireHandTask:
     hand_schedule: str = "policy"
     object_obs_z_bias: float = 0.0
     metrics_name: str | None = None
+    headless: bool = False
+    max_time_s: float | None = None
 
 
 def _read_config(config_file):
@@ -190,9 +192,15 @@ def run_inspirehand_ub_task(config_file, task: InspireHandTask):
     )
 
     print(f"Loaded {task.scene_name}: joints={model.njnt}, qpos={model.nq}, actuators={model.nu}")
+    viewer_context = None if task.headless else mujoco.viewer.launch_passive(model, data)
     try:
-        with mujoco.viewer.launch_passive(model, data) as viewer:
-            while viewer.is_running():
+        if viewer_context is not None:
+            viewer_context.__enter__()
+        while True:
+                if viewer_context is not None and not viewer_context.is_running():
+                    break
+                if task.max_time_s is not None and counter * simulation_dt >= task.max_time_s:
+                    break
                 step_start = time.time()
 
                 if counter * simulation_dt > task.reset_after:
@@ -254,9 +262,12 @@ def run_inspirehand_ub_task(config_file, task: InspireHandTask):
                         target_dof_left_hand = left_hand_open_ja * (1 - action[-2]) + left_hand_closed_ja * action[-2]
                         target_dof_right_hand = right_hand_open_ja * (1 - action[-1]) + right_hand_closed_ja * action[-1]
 
-                viewer.sync()
+                if viewer_context is not None:
+                    viewer_context.sync()
                 time_until_next_step = model.opt.timestep - (time.time() - step_start)
-                if time_until_next_step > 0:
+                if viewer_context is not None and time_until_next_step > 0:
                     time.sleep(time_until_next_step)
     finally:
+        if viewer_context is not None:
+            viewer_context.__exit__(None, None, None)
         metric_logger.close()
