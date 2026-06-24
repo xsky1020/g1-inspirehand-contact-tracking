@@ -1,0 +1,302 @@
+#
+policy_path: "{LEGGED_GYM_ROOT_DIR}/deploy/policies/"
+xml_path: "{LEGGED_GYM_ROOT_DIR}/resources/robots/g1_description/"
+
+# Total simulation time
+simulation_duration: 10.0
+# Simulation time step
+simulation_dt: 0.001
+# Controller update frequency (meets the requirement of simulation_dt * controll_decimation=0.02; 50Hz)
+control_decimation: 20
+# 抽象，这里压根就没有变过！
+
+joint_names:
+  [
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint",
+    "waist_yaw_joint",
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "left_thumb_proximal_yaw_joint",
+    "left_thumb_proximal_pitch_joint",
+    "left_thumb_intermediate_joint",
+    "left_thumb_distal_joint",
+    "left_index_proximal_joint",
+    "left_index_intermediate_joint",
+    "left_middle_proximal_joint",
+    "left_middle_intermediate_joint",
+    "left_ring_proximal_joint",
+    "left_ring_intermediate_joint",
+    "left_pinky_proximal_joint",
+    "left_pinky_intermediate_joint",
+
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+    "right_thumb_proximal_yaw_joint",
+    "right_thumb_proximal_pitch_joint",
+    "right_thumb_intermediate_joint",
+    "right_thumb_distal_joint",
+    "right_index_proximal_joint",
+    "right_index_intermediate_joint",
+    "right_middle_proximal_joint",
+    "right_middle_intermediate_joint",
+    "right_ring_proximal_joint",
+    "right_ring_intermediate_joint",
+    "right_pinky_proximal_joint",
+    "right_pinky_intermediate_joint",
+  ]
+
+left_hand_joint_names:
+  [
+    "left_thumb_proximal_yaw_joint",
+    "left_thumb_proximal_pitch_joint",
+    "left_index_proximal_joint",
+    "left_middle_proximal_joint",
+    "left_ring_proximal_joint",
+    "left_pinky_proximal_joint",
+  ]
+
+left_hand_mimic_joitn_names:
+  [
+    "left_thumb_intermediate_joint",
+    "left_thumb_distal_joint",
+    "left_index_intermediate_joint",
+    "left_middle_intermediate_joint",
+    "left_ring_intermediate_joint",
+    "left_pinky_intermediate_joint",
+  ]
+
+right_hand_joint_names:
+  [
+    "right_thumb_proximal_yaw_joint",
+    "right_thumb_proximal_pitch_joint",
+    "right_index_proximal_joint",
+    "right_middle_proximal_joint",
+    "right_ring_proximal_joint",
+    "right_pinky_proximal_joint",
+  ]
+right_hand_mimic_joitn_names:
+  [
+    "right_thumb_intermediate_joint",
+    "right_thumb_distal_joint",
+    "right_index_intermediate_joint",
+    "right_middle_intermediate_joint",
+    "right_ring_intermediate_joint",
+    "right_pinky_intermediate_joint",
+  ]
+
+# 这个已经通过visualize_pose.py验证过了
+# 需要处理的问题就是，原来所有的关节都是actuator，但是现在只有部分关节是actuator，耦合驱动
+right_hand_open_joint_angles: [0., 0., 0., 0., 0., 0.]
+right_hand_closed_joint_angles: [1.57, 0.5, 1.57, 1.57, 1.57, 1.57]
+left_hand_open_joint_angles: [0., 0., 0., 0., 0., 0.]
+left_hand_closed_joint_angles: [1.57, 0.5, 1.57, 1.57, 1.57, 1.57]
+# 我已经删除了部分的原来手的参数，41变成39维度，但是kps和kds还是和原来一样
+kps:
+  [
+    200,
+    150,
+    150,
+    200,
+    20,
+    20,
+    200,
+    150,
+    150,
+    200,
+    20,
+    20,
+    200,
+    40,
+    40,
+    40,
+    40,
+    40,
+    40,
+    40,
+    5,
+    5,
+    0,
+    0,
+    5,
+    0,
+    5,
+    0,
+    5,
+    0,
+    5,
+    0,
+    40,
+    40,
+    40,
+    40,
+    40,
+    40,
+    40,
+    5,
+    5,
+    0,
+    0,
+    5,
+    0,
+    5,
+    0,
+    5,
+    0,
+    5,
+    0,
+  ]
+kds:
+  [
+    5,
+    5,
+    5,
+    5,
+    2,
+    2,
+    5,
+    5,
+    5,
+    5,
+    2,
+    2,
+    5,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    1.25,
+    1.25,
+    0,
+    0,
+    1.25,
+    0,
+    1.25,
+    0,
+    1.25,
+    0,
+    1.25,
+    0,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    1.25,
+    1.25,
+    0,
+    0,
+    1.25,
+    0,
+    1.25,
+    0,
+    1.25,
+    0,
+    1.25,
+    0
+  ]
+
+default_angles:
+  [
+    -0.2,
+    0.0,
+    0.0,
+    0.42,
+    -0.23,
+    0.0,
+    -0.2,
+    0.0,
+    0.0,
+    0.42,
+    -0.23,
+    0.0,
+    0.0,
+    0.35,
+    0.16,
+    0.0,
+    0.87,
+    0.0,
+    0.0,
+    0.0,
+
+    0.,
+    0.,
+    0.,
+    0.,
+
+    0.,
+    0.,
+
+    0.,
+    0.,
+
+    0.,
+    0.,
+
+    0.,
+    0.,
+
+    0.35,
+    -0.16,
+    0.0,
+    0.87,
+    0.0,
+    0.0,
+    0.0,
+    0.,
+    0.,
+    0.,
+    0.,
+
+    0.,
+    0.,
+
+    0.,
+    0.,
+
+    0.,
+    0.,
+
+    0.,
+    0.,
+  ]
+# size=51
+ang_vel_scale: 0.5
+dof_pos_scale: 1.0
+dof_vel_scale: 1.0
+action_scale: 0.5
+cmd_scale: [1.0, 1.0, 1.0]
+# 这里可能要改一下，因为少了两个actuator，不对，完全不需要，因为之前已经推断出来机器人的手和神经网络没有关系
+# num_actions: 17
+# num_obs: 57
+num_actions: 17
+num_obs: 57
+# 和full_body_29dof只有num_actions和num_obs不同，其他的都一样，为什么？因为full_body_29dof多了肩部的三个关节，所以动作空间和观测空间都增加了6维
+cmd_init: [0, 0, 0]
+
+# 核心矛盾是 d.ctrl 和 d.qpos 维度不匹配的问题

@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Training/runtime outputs
+logs/
+outputs/
+wandb/
+debug_log/
+metrics/
+Sim2Real/deploy/deploy_mujoco/metrics/
+results/**/video_raw/
+
+# Local environments
+.venv/
+venv/
+env/
+.conda/
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Large optional artifacts not needed for source handoff
+*.wandb
+*.log
