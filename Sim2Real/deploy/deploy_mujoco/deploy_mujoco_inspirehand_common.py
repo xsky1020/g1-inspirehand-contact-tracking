@@ -1,3 +1,4 @@
+import os
 import time
 from dataclasses import dataclass
 
@@ -32,6 +33,9 @@ class InspireHandTask:
     metrics_name: str | None = None
     headless: bool = False
     max_time_s: float | None = None
+    record_video: bool = False
+    video_dir: str | None = None
+    video_fps: int = 50
 
 
 def _read_config(config_file):
@@ -75,6 +79,11 @@ def _hand_angles(config, mapping):
             np.array(config["left_hand_closed_joint_angles"]),
             np.array(config["right_hand_closed_joint_angles"]),
         )
+    if mapping == "button_press":
+        lc = np.array(config["left_hand_closed_joint_angles"])
+        rc = np.array(config["right_hand_closed_joint_angles"]).copy()
+        rc[2] = 0.0
+        return (lc, rc, lc, rc)
     return (
         np.array(config["left_hand_open_joint_angles"]),
         np.array(config["right_hand_open_joint_angles"]),
@@ -83,7 +92,18 @@ def _hand_angles(config, mapping):
     )
 
 
+def _video_path(task, work_dir):
+    import datetime
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = (task.metrics_name or task.scene_name.replace(".xml", ""))
+    safe_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in safe_name)
+    out_dir = task.video_dir or os.path.join(work_dir, "videos")
+    os.makedirs(out_dir, exist_ok=True)
+    return os.path.join(out_dir, f"{safe_name}_{stamp}.mp4")
+
+
 def run_inspirehand_ub_task(config_file, task: InspireHandTask):
+    work_dir = os.getcwd()
     config = _read_config(config_file)
     policy_path = config["policy_path"].replace("{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR) + task.policy_name
     xml_path = config["xml_path"].replace("{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR)
@@ -191,6 +211,26 @@ def run_inspirehand_ub_task(config_file, task: InspireHandTask):
         InteractionMetrics(task_name=task.metrics_name or task.scene_name.replace(".xml", "")),
     )
 
+    renderer = None
+    video_writer = None
+    cv2_mod = None
+    video_frame_interval = 0
+    video_step_counter = 0
+    saved_video_path = None
+    do_record = task.record_video and task.headless
+    if task.headless and do_record:
+        try:
+            import cv2 as _cv2
+            cv2_mod = _cv2
+            renderer = mujoco.Renderer(model, 480, 640)
+            saved_video_path = _video_path(task, work_dir)
+            fourcc = cv2_mod.VideoWriter_fourcc(*'mp4v')
+            video_writer = cv2_mod.VideoWriter(saved_video_path, fourcc, task.video_fps, (640, 480))
+            video_frame_interval = max(1, int(1.0 / (task.video_fps * simulation_dt)))
+            print(f"[video] recording to {saved_video_path} at {task.video_fps}fps (render every {video_frame_interval} steps)")
+        except ImportError:
+            print("[video] cv2 not available, skipping video recording")
+
     print(f"Loaded {task.scene_name}: joints={model.njnt}, qpos={model.nq}, actuators={model.nu}")
     viewer_context = None if task.headless else mujoco.viewer.launch_passive(model, data)
     try:
@@ -217,6 +257,12 @@ def run_inspirehand_ub_task(config_file, task: InspireHandTask):
                 mujoco.mj_step(model, data)
                 counter += 1
                 metric_logger.update(counter * simulation_dt, simulation_dt)
+
+                if renderer is not None and video_step_counter % video_frame_interval == 0:
+                    renderer.update_scene(data, camera=-1)
+                    frame = renderer.render()
+                    video_writer.write(cv2_mod.cvtColor(frame, cv2_mod.COLOR_RGB2BGR))
+                video_step_counter += 1
 
                 if counter % control_decimation == 0:
                     qj = data.qpos[active_joint_ids]
@@ -270,4 +316,7 @@ def run_inspirehand_ub_task(config_file, task: InspireHandTask):
     finally:
         if viewer_context is not None:
             viewer_context.__exit__(None, None, None)
+        if video_writer is not None:
+            video_writer.release()
+            print(f"[video] saved to {saved_video_path}")
         metric_logger.close()

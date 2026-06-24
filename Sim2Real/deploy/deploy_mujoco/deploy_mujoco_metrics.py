@@ -1,6 +1,5 @@
 import csv
 import os
-import tempfile
 import time
 from dataclasses import dataclass
 
@@ -25,12 +24,16 @@ HAND_BODY_KEYWORDS = ("wrist", "inspire_hand", "thumb", "index", "middle", "ring
 OBJECT_BODY_NAMES = ("object", "drawer_visual", "platform")
 OBJECT_BODY_KEYWORDS = ("object", "drawer", "button", "handle")
 
+NEAR_THRESHOLD = 0.05
+
 
 @dataclass
 class InteractionMetrics:
     task_name: str
     output_dir: str | None = None
     log_every_steps: int = 20
+    record_video: bool = False
+    video_path: str | None = None
 
 
 class InteractionMetricLogger:
@@ -42,10 +45,6 @@ class InteractionMetricLogger:
         self.cfg = cfg
         self.step_count = 0
         self.episode_index = 0
-        self.contact_duration = 0.0
-        self.max_object_displacement = 0.0
-        self.max_object_height_delta = 0.0
-        self.max_drawer_slide_abs = 0.0
 
         self.fingertip_site_ids = self._find_sites(FINGERTIP_SITE_NAMES)
         self.object_body_id = self._find_first_body(OBJECT_BODY_NAMES)
@@ -53,7 +52,7 @@ class InteractionMetricLogger:
         self.hand_geom_ids = self._collect_hand_geom_ids()
         self.object_geom_ids = self._collect_object_geom_ids()
 
-        output_dir = cfg.output_dir or os.path.join(tempfile.gettempdir(), "dreamcontrol_metrics")
+        output_dir = cfg.output_dir or os.path.join(os.getcwd(), "metrics")
         os.makedirs(output_dir, exist_ok=True)
         stamp = time.strftime("%Y%m%d_%H%M%S")
         safe_task = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in cfg.task_name)
@@ -66,8 +65,10 @@ class InteractionMetricLogger:
                 "time_s",
                 "min_fingertip_object_distance",
                 "mean_fingertip_object_distance",
+                "num_fingertips_near_5cm",
                 "contact_flag",
                 "contact_duration_s",
+                "contact_onset_time",
                 "object_displacement",
                 "object_height_delta",
                 "drawer_slide",
@@ -103,23 +104,44 @@ class InteractionMetricLogger:
         mujoco.mj_forward(self.model, self.data)
         self.episode_index += 1
         self.contact_duration = 0.0
+        self.contact_onset_time = None
+        self.contact_step_count = 0
+        self.step_count_in_episode = 0
         self.max_object_displacement = 0.0
         self.max_object_height_delta = 0.0
         self.max_drawer_slide_abs = 0.0
+        self.max_penetration = 0.0
+        self.post_contact_peak_height = None
+        self.object_dropped = False
         self.initial_object_pos = self._object_pos()
         self.initial_drawer_slide = self._drawer_slide()
+        self._prev_object_pos = self.initial_object_pos
 
     def update(self, time_s: float, dt: float):
         self.step_count += 1
+        self.step_count_in_episode += 1
+
         contact_flag = self._contact_flag()
         if contact_flag:
             self.contact_duration += dt
+            self.contact_step_count += 1
+            if self.contact_onset_time is None:
+                self.contact_onset_time = time_s
 
         object_pos = self._object_pos()
         object_displacement = float(np.linalg.norm(object_pos - self.initial_object_pos)) if object_pos is not None else np.nan
         object_height_delta = float(object_pos[2] - self.initial_object_pos[2]) if object_pos is not None else np.nan
         drawer_slide = self._drawer_slide()
         drawer_slide_delta = drawer_slide - self.initial_drawer_slide if drawer_slide is not None else np.nan
+
+        if contact_flag and not np.isnan(object_height_delta):
+            if self.post_contact_peak_height is None or object_height_delta > self.post_contact_peak_height:
+                self.post_contact_peak_height = object_height_delta
+            if self.post_contact_peak_height is not None and object_height_delta < self.post_contact_peak_height - 0.01:
+                self.object_dropped = True
+
+        penetration = self._max_penetration_depth() if contact_flag else 0.0
+        self.max_penetration = max(self.max_penetration, penetration)
 
         if not np.isnan(object_displacement):
             self.max_object_displacement = max(self.max_object_displacement, object_displacement)
@@ -128,18 +150,24 @@ class InteractionMetricLogger:
         if not np.isnan(drawer_slide_delta):
             self.max_drawer_slide_abs = max(self.max_drawer_slide_abs, abs(float(drawer_slide_delta)))
 
+        self._prev_object_pos = object_pos
+
         if self.step_count % self.cfg.log_every_steps != 0:
             return
 
         min_dist, mean_dist = self._fingertip_object_distances(object_pos)
+        num_near = self._num_fingertips_near(object_pos, NEAR_THRESHOLD)
+
         self.writer.writerow(
             {
                 "episode": self.episode_index,
                 "time_s": f"{time_s:.4f}",
                 "min_fingertip_object_distance": self._fmt(min_dist),
                 "mean_fingertip_object_distance": self._fmt(mean_dist),
+                "num_fingertips_near_5cm": num_near,
                 "contact_flag": int(contact_flag),
                 "contact_duration_s": f"{self.contact_duration:.4f}",
+                "contact_onset_time": self._fmt(self.contact_onset_time),
                 "object_displacement": self._fmt(object_displacement),
                 "object_height_delta": self._fmt(object_height_delta),
                 "drawer_slide": self._fmt(drawer_slide_delta),
@@ -234,6 +262,13 @@ class InteractionMetricLogger:
         distances = np.linalg.norm(tip_positions - object_pos[None, :], axis=1)
         return float(np.min(distances)), float(np.mean(distances))
 
+    def _num_fingertips_near(self, object_pos, threshold):
+        if object_pos is None or not self.fingertip_site_ids:
+            return 0
+        tip_positions = self.data.site_xpos[self.fingertip_site_ids]
+        distances = np.linalg.norm(tip_positions - object_pos[None, :], axis=1)
+        return int(np.sum(distances < threshold))
+
     def _contact_flag(self):
         if not self.hand_geom_ids or not self.object_geom_ids:
             return False
@@ -247,8 +282,26 @@ class InteractionMetricLogger:
                 return True
         return False
 
+    def _max_penetration_depth(self):
+        if not self.hand_geom_ids or not self.object_geom_ids:
+            return 0.0
+        max_pen = 0.0
+        for i in range(self.data.ncon):
+            contact = self.data.contact[i]
+            geom1 = int(contact.geom1)
+            geom2 = int(contact.geom2)
+            if (geom1 in self.hand_geom_ids and geom2 in self.object_geom_ids) or (
+                geom2 in self.hand_geom_ids and geom1 in self.object_geom_ids
+            ):
+                dist = float(contact.dist)
+                if dist < 0:
+                    max_pen = max(max_pen, -dist)
+            if contact.dist < 0:
+                max_pen = max(max_pen, -float(contact.dist))
+        return max_pen if self.data.ncon > 0 else 0.0
+
     @staticmethod
     def _fmt(value):
-        if value is None or np.isnan(value):
+        if value is None or (isinstance(value, float) and np.isnan(value)):
             return "nan"
         return f"{float(value):.6f}"
